@@ -1,3 +1,4 @@
+// src/auth/meta-client.js
 import 'dotenv/config';
 
 export class MetaClient {
@@ -39,8 +40,6 @@ export function getClient() {
   return _client;
 }
 
-// Prioridade 1: account_id direto na chamada (vem do SAAS)
-// Prioridade 2: variável de ambiente META_ACCOUNT_<NOME>
 export function resolveAccountId(clientName, accountId = null) {
   if (accountId) return accountId;
   const name = clientName.toUpperCase().replace(/[\s-]/g, '_');
