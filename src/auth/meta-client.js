@@ -1,9 +1,10 @@
-// src/auth/meta-client.js
-// Cliente centralizado para a Graph API do Meta
+import 'dotenv/config';
 
 export class MetaClient {
-  constructor(accessToken) {
-    this.token = accessToken;
+  constructor() {
+    const token = process.env.META_ACCESS_TOKEN;
+    if (!token) throw new Error('META_ACCESS_TOKEN não configurado no .env');
+    this.token = token;
     this.baseUrl = `https://graph.facebook.com/${process.env.META_API_VERSION || 'v19.0'}`;
   }
 
@@ -11,15 +12,11 @@ export class MetaClient {
     const url = new URL(`${this.baseUrl}${endpoint}`);
     url.searchParams.set('access_token', this.token);
     Object.entries(params).forEach(([k, v]) => {
-      if (v !== undefined && v !== null) url.searchParams.set(k, v);
+      if (v !== undefined && v !== null) url.searchParams.set(k, String(v));
     });
-
     const res = await fetch(url.toString());
     const data = await res.json();
-
-    if (data.error) {
-      throw new Error(`Meta API Error [${data.error.code}]: ${data.error.message}`);
-    }
+    if (data.error) throw new Error(`Meta API Error [${data.error.code}]: ${data.error.message}`);
     return data;
   }
 
@@ -31,32 +28,32 @@ export class MetaClient {
       body: JSON.stringify({ ...body, access_token: this.token })
     });
     const data = await res.json();
-
-    if (data.error) {
-      throw new Error(`Meta API Error [${data.error.code}]: ${data.error.message}`);
-    }
+    if (data.error) throw new Error(`Meta API Error [${data.error.code}]: ${data.error.message}`);
     return data;
   }
 }
 
-// Resolve o token e account_id para um cliente pelo nome
-export function resolveClient(clientName) {
-  const name = clientName.toUpperCase().replace(/\s/g, '_');
-  const token = process.env[`META_TOKEN_${name}`];
-  const accountId = process.env[`META_ACCOUNT_${name}`];
-
-  if (!token) throw new Error(`Token não encontrado para o cliente: ${clientName}`);
-
-  return {
-    client: new MetaClient(token),
-    accountId: accountId || null,
-    token
-  };
+let _client = null;
+export function getClient() {
+  if (!_client) _client = new MetaClient();
+  return _client;
 }
 
-// Lista todos os clientes configurados
+// Prioridade 1: account_id direto na chamada (vem do SAAS)
+// Prioridade 2: variável de ambiente META_ACCOUNT_<NOME>
+export function resolveAccountId(clientName, accountId = null) {
+  if (accountId) return accountId;
+  const name = clientName.toUpperCase().replace(/[\s-]/g, '_');
+  const envId = process.env[`META_ACCOUNT_${name}`];
+  if (!envId) throw new Error(
+    `account_id não encontrado para "${clientName}". ` +
+    `Passe "account_id" na chamada ou configure META_ACCOUNT_${name} no .env`
+  );
+  return envId;
+}
+
 export function listClients() {
   return Object.keys(process.env)
-    .filter(k => k.startsWith('META_TOKEN_'))
-    .map(k => k.replace('META_TOKEN_', '').toLowerCase());
+    .filter(k => k.startsWith('META_ACCOUNT_'))
+    .map(k => k.replace('META_ACCOUNT_', '').toLowerCase());
 }
