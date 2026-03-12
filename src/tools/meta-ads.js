@@ -1,7 +1,7 @@
 // src/tools/meta-ads.js
 // Ferramentas completas de Meta Ads
 
-import { resolveClient } from '../auth/meta-client.js';
+import { getClient, resolveAccountId, listClients } from '../auth/meta-client.js';
 
 export const metaAdsTools = [
   // ─── CONTAS ───────────────────────────────────────────
