@@ -221,15 +221,15 @@ export const metaAdsTools = [
 
 // ─── HANDLERS ─────────────────────────────────────────────
 export async function handleMetaAds(toolName, args) {
-  const { client: clientName, ...params } = args;
+  const { client: clientName, account_id, ...params } = args;
 
   if (toolName === 'list_clients') {
-    const { listClients } = await import('../auth/meta-client.js');
     const clients = listClients();
     return { clients, total: clients.length };
   }
 
-  const { client, accountId } = resolveClient(clientName);
+  const client = getClient();
+  const accountId = resolveAccountId(clientName, account_id);
   const fields = {
     campaign: 'id,name,status,objective,daily_budget,lifetime_budget,budget_remaining,start_time,stop_time',
     adset: 'id,name,status,campaign_id,daily_budget,optimization_goal,targeting,start_time,end_time',
