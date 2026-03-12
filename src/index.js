@@ -64,7 +64,7 @@ async function startHttp() {
 
   const auth = (req, res, next) => {
     if (!API_KEY) return next();
-    const key = req.headers['x-api-key'] || req.headers['authorization']?.replace('Bearer ', '');
+    const key = req.headers['x-api-key'] || req.headers['authorization']?.replace('Bearer ', '') || req.query.key;
     if (key !== API_KEY) return res.status(401).json({ error: 'Não autorizado. Forneça x-api-key ou Authorization: Bearer <key>' });
     next();
   };
