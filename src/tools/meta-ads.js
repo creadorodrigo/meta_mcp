@@ -24,18 +24,18 @@ export const metaAdsTools = [
 
   // ─── CAMPANHAS ────────────────────────────────────────
   {
-    name: 'get_campaigns',
-    description: 'Lista campanhas da conta do cliente com status e orçamento',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        client: { type: 'string', description: 'Nome do cliente' },
-        status: { type: 'string', enum: ['ACTIVE', 'PAUSED', 'ARCHIVED', 'ALL'], default: 'ALL' },
-        limit: { type: 'number', default: 25 }
-      },
-      required: ['client']
+  name: 'get_campaigns',
+  description: 'Lista campanhas. Forneça account_id diretamente (ex: act_949878915087001). O campo client é opcional.',
+  inputSchema: {
+    type: 'object',
+    properties: {
+      account_id: { type: 'string', description: 'ID da conta de anúncios (ex: act_949878915087001)' },
+      client: { type: 'string', description: 'Nome do cliente (opcional se account_id fornecido)' },
+      status: { type: 'string', enum: ['ACTIVE', 'PAUSED', 'ARCHIVED', 'ALL'], default: 'ALL' },
+      limit: { type: 'number', default: 25 }
     }
-  },
+  }
+},
   {
     name: 'create_campaign',
     description: 'Cria uma nova campanha no Meta Ads',
