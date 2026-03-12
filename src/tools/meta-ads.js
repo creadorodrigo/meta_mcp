@@ -3,24 +3,19 @@
 
 import { resolveClient } from '../auth/meta-client.js';
 
-export const metaAdsTools = [
-  // ─── CONTAS ───────────────────────────────────────────
-  {
-    name: 'list_clients',
-    description: 'Lista todos os clientes configurados no MCP com seus account IDs',
-    inputSchema: { type: 'object', properties: {} }
-  },
-  {
-    name: 'get_account_info',
-    description: 'Retorna informações da conta de anúncios do cliente (saldo, moeda, status)',
-    inputSchema: {
-      type: 'object',
-      properties: {
-        client: { type: 'string', description: 'Nome do cliente (ex: educamente, macol)' }
-      },
-      required: ['client']
-    }
-  },
+export async function handleMetaAds(toolName, args) {
+  const { client: clientName, account_id, ...params } = args;
+
+  if (toolName === 'list_clients') {
+    const clients = listClients();
+    return { clients, total: clients.length };
+  }
+
+  const client = getClient();
+  const accountId = resolveAccountId(clientName, account_id);
+
+  // ... restante do switch permanece igual
+}
 
   // ─── CAMPANHAS ────────────────────────────────────────
   {
