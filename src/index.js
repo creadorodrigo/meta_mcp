@@ -13,7 +13,6 @@ import { mediaTools, handleMedia } from './tools/media-library.js';
 import { instagramTools, handleInstagram } from './tools/instagram.js';
 import { facebookTools, handleFacebook } from './tools/facebook-pages.js';
 
-// ─── TODAS AS TOOLS ───────────────────────────────────────
 const ALL_TOOLS = [
   ...metaAdsTools,
   ...mediaTools,
@@ -21,13 +20,11 @@ const ALL_TOOLS = [
   ...facebookTools
 ];
 
-// Prefixos para roteamento
 const META_ADS_TOOLS = new Set(metaAdsTools.map(t => t.name));
 const MEDIA_TOOLS    = new Set(mediaTools.map(t => t.name));
 const IG_TOOLS       = new Set(instagramTools.map(t => t.name));
 const FB_TOOLS       = new Set(facebookTools.map(t => t.name));
 
-// ─── ROTEADOR DE TOOLS ────────────────────────────────────
 async function routeTool(name, args) {
   if (META_ADS_TOOLS.has(name)) return handleMetaAds(name, args);
   if (MEDIA_TOOLS.has(name))    return handleMedia(name, args);
@@ -36,42 +33,28 @@ async function routeTool(name, args) {
   throw new Error(`Tool não encontrada: ${name}`);
 }
 
-// ─── CRIAR SERVIDOR MCP ───────────────────────────────────
-function createMcpServer() {
+// ─── MODO: STDIO ──────────────────────────────────────────
+async function startStdio() {
   const server = new Server(
     { name: 'rc-meta-mcp', version: '1.0.0' },
     { capabilities: { tools: {} } }
   );
-
   server.setRequestHandler(ListToolsRequestSchema, async () => ({ tools: ALL_TOOLS }));
-
   server.setRequestHandler(CallToolRequestSchema, async (request) => {
     const { name, arguments: args } = request.params;
     try {
       const result = await routeTool(name, args || {});
-      return {
-        content: [{ type: 'text', text: JSON.stringify(result, null, 2) }]
-      };
+      return { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] };
     } catch (error) {
-      return {
-        content: [{ type: 'text', text: `❌ Erro: ${error.message}` }],
-        isError: true
-      };
+      return { content: [{ type: 'text', text: `Erro: ${error.message}` }], isError: true };
     }
   });
-
-  return server;
-}
-
-// ─── MODO: STDIO (Claude Desktop local) ──────────────────
-async function startStdio() {
-  const server = createMcpServer();
   const transport = new StdioServerTransport();
   await server.connect(transport);
-  console.error('✅ RC Meta MCP rodando em modo STDIO (Claude Desktop)');
+  console.error('RC Meta MCP rodando em STDIO');
 }
 
-// ─── MODO: HTTP (VPS / SAAS / N8N) ───────────────────────
+// ─── MODO: HTTP ───────────────────────────────────────────
 async function startHttp() {
   const app = express();
   app.use(express.json());
@@ -79,42 +62,64 @@ async function startHttp() {
   const PORT = process.env.PORT || 3000;
   const API_KEY = process.env.MCP_API_KEY;
 
-  // Middleware de autenticação
-  const authMiddleware = (req, res, next) => {
-    if (!API_KEY) return next(); // sem chave = modo dev
+  const auth = (req, res, next) => {
+    if (!API_KEY) return next();
     const key = req.headers['x-api-key'] || req.headers['authorization']?.replace('Bearer ', '');
-    if (key !== API_KEY) {
-      return res.status(401).json({ error: 'Não autorizado. Forneça x-api-key ou Authorization: Bearer <key>' });
-    }
+    if (key !== API_KEY) return res.status(401).json({ error: 'Não autorizado. Forneça x-api-key ou Authorization: Bearer <key>' });
     next();
   };
 
-  // ── Health check ──
+  // Health
   app.get('/health', (req, res) => {
     res.json({ status: 'ok', server: 'rc-meta-mcp', version: '1.0.0' });
   });
 
-  // ── Listar tools disponíveis ──
-  app.get('/tools', authMiddleware, (req, res) => {
+  // Listar tools
+  app.get('/tools', auth, (req, res) => {
     res.json({ tools: ALL_TOOLS, total: ALL_TOOLS.length });
   });
 
-  // ── Executar uma tool (para SAAS e N8N) ──
-  app.post('/tools/:toolName', authMiddleware, async (req, res) => {
+  // Executar tool (SAAS / N8N)
+  app.post('/tools/:toolName', auth, async (req, res) => {
     const { toolName } = req.params;
-    const args = req.body || {};
-
     try {
-      const result = await routeTool(toolName, args);
+      const result = await routeTool(toolName, req.body || {});
       res.json({ success: true, tool: toolName, data: result });
     } catch (error) {
       res.status(400).json({ success: false, tool: toolName, error: error.message });
     }
   });
 
-  // ── Endpoint MCP Streamable (para Claude Desktop remoto) ──
-  app.post('/mcp', authMiddleware, async (req, res) => {
+  // ── MCP Streamable (Claude Desktop remoto / Claude.ai) ──
+  // GET → info do servidor (descoberta)
+  app.get('/mcp', auth, (req, res) => {
+    res.json({
+      name: 'rc-meta-mcp',
+      version: '1.0.0',
+      description: 'RC Performance — Meta Ads MCP Server',
+      tools: ALL_TOOLS.length,
+      protocol: 'mcp/1.0'
+    });
+  });
+
+  // POST → JSON-RPC 2.0
+  app.post('/mcp', auth, async (req, res) => {
     const { method, params, id } = req.body;
+
+    if (method === 'initialize') {
+      return res.json({
+        jsonrpc: '2.0', id,
+        result: {
+          protocolVersion: '2024-11-05',
+          capabilities: { tools: {} },
+          serverInfo: { name: 'rc-meta-mcp', version: '1.0.0' }
+        }
+      });
+    }
+
+    if (method === 'notifications/initialized') {
+      return res.status(204).end();
+    }
 
     try {
       let result;
@@ -124,9 +129,8 @@ async function startHttp() {
         const data = await routeTool(params.name, params.arguments || {});
         result = { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
       } else {
-        return res.json({ jsonrpc: '2.0', id, error: { code: -32601, message: 'Método não encontrado' } });
+        return res.json({ jsonrpc: '2.0', id, error: { code: -32601, message: `Método não encontrado: ${method}` } });
       }
-
       res.json({ jsonrpc: '2.0', id, result });
     } catch (error) {
       res.json({ jsonrpc: '2.0', id, error: { code: -32000, message: error.message } });
@@ -134,19 +138,11 @@ async function startHttp() {
   });
 
   app.listen(PORT, () => {
-    console.log(`✅ RC Meta MCP rodando em HTTP na porta ${PORT}`);
-    console.log(`   Health:  http://localhost:${PORT}/health`);
-    console.log(`   Tools:   http://localhost:${PORT}/tools`);
-    console.log(`   MCP:     http://localhost:${PORT}/mcp`);
-    console.log(`   API:     POST http://localhost:${PORT}/tools/<nome_da_tool>`);
+    console.log(`RC Meta MCP HTTP na porta ${PORT}`);
   });
 }
 
 // ─── INICIALIZAÇÃO ────────────────────────────────────────
 const mode = process.env.MCP_MODE || 'stdio';
-
-if (mode === 'http') {
-  startHttp();
-} else {
-  startStdio();
-}
+if (mode === 'http') startHttp();
+else startStdio();
