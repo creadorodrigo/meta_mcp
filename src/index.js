@@ -62,24 +62,38 @@ async function startHttp() {
   const PORT = process.env.PORT || 3000;
   const API_KEY = process.env.MCP_API_KEY;
 
+  // ── CORS global ──
+  app.use((req, res, next) => {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, x-api-key, mcp-session-id');
+    if (req.method === 'OPTIONS') return res.status(204).end();
+    next();
+  });
+
   const auth = (req, res, next) => {
     if (!API_KEY) return next();
-    const key = req.headers['x-api-key'] || req.headers['authorization']?.replace('Bearer ', '') || req.query.key;
-    if (key !== API_KEY) return res.status(401).json({ error: 'Não autorizado. Forneça x-api-key ou Authorization: Bearer <key>' });
+    const key =
+      req.headers['x-api-key'] ||
+      req.headers['authorization']?.replace('Bearer ', '') ||
+      req.query.key;
+    if (key !== API_KEY) {
+      return res.status(401).json({ error: 'Não autorizado. Forneça x-api-key ou Authorization: Bearer <key>' });
+    }
     next();
   };
 
-  // Health
+  // ── Health ──
   app.get('/health', (req, res) => {
     res.json({ status: 'ok', server: 'rc-meta-mcp', version: '1.0.0' });
   });
 
-  // Listar tools
+  // ── Listar tools (REST) ──
   app.get('/tools', auth, (req, res) => {
     res.json({ tools: ALL_TOOLS, total: ALL_TOOLS.length });
   });
 
-  // Executar tool (SAAS / N8N)
+  // ── Executar tool (SAAS / N8N) ──
   app.post('/tools/:toolName', auth, async (req, res) => {
     const { toolName } = req.params;
     try {
@@ -90,19 +104,28 @@ async function startHttp() {
     }
   });
 
-  // ── MCP Streamable (Claude Desktop remoto / Claude.ai) ──
-  // GET → info do servidor (descoberta)
+  // ── MCP via SSE — GET /mcp (Claude.ai abre este canal) ──
   app.get('/mcp', auth, (req, res) => {
-    res.json({
-      name: 'rc-meta-mcp',
-      version: '1.0.0',
-      description: 'RC Performance — Meta Ads MCP Server',
-      tools: ALL_TOOLS.length,
-      protocol: 'mcp/1.0'
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+
+    // Envia o endpoint onde o Claude.ai deve fazer POST
+    const baseUrl = `${req.protocol}://${req.get('host')}`;
+    res.write(`event: endpoint\ndata: ${baseUrl}/mcp\n\n`);
+
+    // Keepalive a cada 25s para não fechar a conexão
+    const keepalive = setInterval(() => {
+      res.write(': keepalive\n\n');
+    }, 25000);
+
+    req.on('close', () => {
+      clearInterval(keepalive);
+      res.end();
     });
   });
 
-  // POST → JSON-RPC 2.0
+  // ── MCP via JSON-RPC 2.0 — POST /mcp (Claude.ai executa tools aqui) ──
   app.post('/mcp', auth, async (req, res) => {
     const { method, params, id } = req.body;
 
@@ -123,26 +146,28 @@ async function startHttp() {
 
     try {
       let result;
+
       if (method === 'tools/list') {
         result = { tools: ALL_TOOLS };
+
       } else if (method === 'tools/call') {
         const data = await routeTool(params.name, params.arguments || {});
-        result = { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
+        const text = JSON.stringify(data, null, 2);
+        result = { content: [{ type: 'text', text }] };
+
       } else {
-        return res.json({ jsonrpc: '2.0', id, error: { code: -32601, message: `Método não encontrado: ${method}` } });
+        return res.json({
+          jsonrpc: '2.0', id,
+          error: { code: -32601, message: `Método não encontrado: ${method}` }
+        });
       }
+
       res.json({ jsonrpc: '2.0', id, result });
+
     } catch (error) {
-      res.json({ jsonrpc: '2.0', id, error: { code: -32000, message: error.message } });
+      res.json({
+        jsonrpc: '2.0', id,
+        error: { code: -32000, message: error.message }
+      });
     }
   });
-
-  app.listen(PORT, () => {
-    console.log(`RC Meta MCP HTTP na porta ${PORT}`);
-  });
-}
-
-// ─── INICIALIZAÇÃO ────────────────────────────────────────
-const mode = process.env.MCP_MODE || 'stdio';
-if (mode === 'http') startHttp();
-else startStdio();
