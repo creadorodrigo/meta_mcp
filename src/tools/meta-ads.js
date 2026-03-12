@@ -7,214 +7,213 @@ export const metaAdsTools = [
   // ─── CONTAS ───────────────────────────────────────────
   {
     name: 'list_clients',
-    description: 'Lista todos os clientes configurados no MCP com seus account IDs',
+    description: 'Lista clientes configurados no servidor. Use apenas se não souber o account_id. Se o usuário fornecer o account_id diretamente, NÃO chame esta tool.',
     inputSchema: { type: 'object', properties: {} }
   },
   {
     name: 'get_account_info',
-    description: 'Retorna informações da conta de anúncios do cliente (saldo, moeda, status)',
+    description: 'Retorna informações da conta de anúncios (saldo, moeda, status). Forneça account_id diretamente (ex: act_949878915087001).',
     inputSchema: {
       type: 'object',
       properties: {
-        client: { type: 'string', description: 'Nome do cliente (ex: educamente, macol)' }
+        account_id: { type: 'string', description: 'ID da conta. Exemplo: act_949878915087001' },
+        client: { type: 'string', description: 'Nome do cliente (opcional, só se account_id não fornecido)' }
       },
-      required: ['client']
+      required: ['account_id']
     }
   },
 
   // ─── CAMPANHAS ────────────────────────────────────────
   {
-  name: 'get_campaigns',
-  description: 'Lista campanhas. Forneça account_id diretamente (ex: act_949878915087001). O campo client é opcional.',
-  inputSchema: {
-    type: 'object',
-    properties: {
-      account_id: { type: 'string', description: 'ID da conta de anúncios (ex: act_949878915087001)' },
-      client: { type: 'string', description: 'Nome do cliente (opcional se account_id fornecido)' },
-      status: { type: 'string', enum: ['ACTIVE', 'PAUSED', 'ARCHIVED', 'ALL'], default: 'ALL' },
-      limit: { type: 'number', default: 25 }
-    }
-  }
-},
-  {
-    name: 'create_campaign',
-    description: 'Cria uma nova campanha no Meta Ads',
+    name: 'get_campaigns',
+    description: 'Lista campanhas de uma conta do Meta Ads. Use account_id diretamente (ex: act_949878915087001). NÃO chame list_clients antes.',
     inputSchema: {
       type: 'object',
       properties: {
-        client: { type: 'string' },
+        account_id: { type: 'string', description: 'ID da conta. Exemplo: act_949878915087001' },
+        client: { type: 'string', description: 'Nome do cliente (opcional)' },
+        status: { type: 'string', enum: ['ACTIVE', 'PAUSED', 'ARCHIVED', 'ALL'], default: 'ALL' },
+        limit: { type: 'number', default: 25 }
+      },
+      required: ['account_id']
+    }
+  },
+  {
+    name: 'create_campaign',
+    description: 'Cria uma nova campanha no Meta Ads.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        account_id: { type: 'string', description: 'ID da conta. Exemplo: act_949878915087001' },
+        client: { type: 'string', description: 'Nome do cliente (opcional)' },
         name: { type: 'string', description: 'Nome da campanha' },
         objective: {
           type: 'string',
           enum: ['OUTCOME_AWARENESS', 'OUTCOME_TRAFFIC', 'OUTCOME_ENGAGEMENT',
-                 'OUTCOME_LEADS', 'OUTCOME_APP_PROMOTION', 'OUTCOME_SALES'],
-          description: 'Objetivo da campanha'
+                 'OUTCOME_LEADS', 'OUTCOME_APP_PROMOTION', 'OUTCOME_SALES']
         },
         status: { type: 'string', enum: ['ACTIVE', 'PAUSED'], default: 'PAUSED' },
-        daily_budget: { type: 'number', description: 'Orçamento diário em centavos (ex: 5000 = R$50)' },
-        lifetime_budget: { type: 'number', description: 'Orçamento total em centavos (alternativo ao daily)' },
-        special_ad_categories: {
-          type: 'array',
-          items: { type: 'string' },
-          default: [],
-          description: 'Categorias especiais (HOUSING, EMPLOYMENT, CREDIT, ISSUES_ELECTIONS_POLITICS)'
-        }
+        daily_budget: { type: 'number', description: 'Em centavos (ex: 5000 = R$50)' },
+        lifetime_budget: { type: 'number', description: 'Em centavos' },
+        special_ad_categories: { type: 'array', items: { type: 'string' }, default: [] }
       },
-      required: ['client', 'name', 'objective']
+      required: ['account_id', 'name', 'objective']
     }
   },
   {
     name: 'update_campaign',
-    description: 'Atualiza status, orçamento ou nome de uma campanha',
+    description: 'Atualiza status, orçamento ou nome de uma campanha.',
     inputSchema: {
       type: 'object',
       properties: {
-        client: { type: 'string' },
+        account_id: { type: 'string', description: 'ID da conta' },
+        client: { type: 'string', description: 'Nome do cliente (opcional)' },
         campaign_id: { type: 'string' },
         name: { type: 'string' },
         status: { type: 'string', enum: ['ACTIVE', 'PAUSED', 'ARCHIVED'] },
-        daily_budget: { type: 'number', description: 'Em centavos' },
-        lifetime_budget: { type: 'number', description: 'Em centavos' }
+        daily_budget: { type: 'number' },
+        lifetime_budget: { type: 'number' }
       },
-      required: ['client', 'campaign_id']
+      required: ['account_id', 'campaign_id']
     }
   },
 
   // ─── ADSETS ───────────────────────────────────────────
   {
     name: 'get_adsets',
-    description: 'Lista conjuntos de anúncios de uma campanha ou conta',
+    description: 'Lista conjuntos de anúncios de uma conta ou campanha. Use account_id diretamente.',
     inputSchema: {
       type: 'object',
       properties: {
-        client: { type: 'string' },
+        account_id: { type: 'string', description: 'ID da conta. Exemplo: act_949878915087001' },
+        client: { type: 'string', description: 'Nome do cliente (opcional)' },
         campaign_id: { type: 'string', description: 'Filtrar por campanha (opcional)' },
         status: { type: 'string', enum: ['ACTIVE', 'PAUSED', 'ARCHIVED', 'ALL'], default: 'ALL' }
       },
-      required: ['client']
+      required: ['account_id']
     }
   },
   {
     name: 'create_adset',
-    description: 'Cria um conjunto de anúncios com segmentação e orçamento',
+    description: 'Cria um conjunto de anúncios com segmentação e orçamento.',
     inputSchema: {
       type: 'object',
       properties: {
-        client: { type: 'string' },
+        account_id: { type: 'string', description: 'ID da conta' },
+        client: { type: 'string', description: 'Nome do cliente (opcional)' },
         campaign_id: { type: 'string' },
         name: { type: 'string' },
         daily_budget: { type: 'number', description: 'Em centavos' },
         billing_event: { type: 'string', enum: ['IMPRESSIONS', 'LINK_CLICKS', 'APP_INSTALLS'], default: 'IMPRESSIONS' },
-        optimization_goal: { type: 'string', description: 'Ex: REACH, LINK_CLICKS, CONVERSIONS, LEAD_GENERATION' },
-        targeting: { type: 'object', description: 'Objeto de segmentação do Meta (geo_locations, age_min, age_max, etc.)' },
-        start_time: { type: 'string', description: 'ISO 8601 (ex: 2024-01-01T00:00:00Z)' },
-        end_time: { type: 'string', description: 'ISO 8601' },
+        optimization_goal: { type: 'string' },
+        targeting: { type: 'object' },
+        start_time: { type: 'string' },
+        end_time: { type: 'string' },
         status: { type: 'string', enum: ['ACTIVE', 'PAUSED'], default: 'PAUSED' }
       },
-      required: ['client', 'campaign_id', 'name', 'daily_budget', 'optimization_goal', 'targeting']
+      required: ['account_id', 'campaign_id', 'name', 'daily_budget', 'optimization_goal', 'targeting']
     }
   },
   {
     name: 'update_adset',
-    description: 'Atualiza status, orçamento ou segmentação de um adset',
+    description: 'Atualiza status, orçamento ou segmentação de um adset.',
     inputSchema: {
       type: 'object',
       properties: {
-        client: { type: 'string' },
+        account_id: { type: 'string', description: 'ID da conta' },
+        client: { type: 'string', description: 'Nome do cliente (opcional)' },
         adset_id: { type: 'string' },
         name: { type: 'string' },
         status: { type: 'string', enum: ['ACTIVE', 'PAUSED', 'ARCHIVED'] },
         daily_budget: { type: 'number' },
         targeting: { type: 'object' }
       },
-      required: ['client', 'adset_id']
+      required: ['account_id', 'adset_id']
     }
   },
 
   // ─── ANÚNCIOS ─────────────────────────────────────────
   {
     name: 'get_ads',
-    description: 'Lista anúncios de um adset ou campanha',
+    description: 'Lista anúncios de uma conta, adset ou campanha. Use account_id diretamente.',
     inputSchema: {
       type: 'object',
       properties: {
-        client: { type: 'string' },
+        account_id: { type: 'string', description: 'ID da conta. Exemplo: act_949878915087001' },
+        client: { type: 'string', description: 'Nome do cliente (opcional)' },
         adset_id: { type: 'string', description: 'Filtrar por adset (opcional)' },
         campaign_id: { type: 'string', description: 'Filtrar por campanha (opcional)' },
         status: { type: 'string', enum: ['ACTIVE', 'PAUSED', 'ARCHIVED', 'ALL'], default: 'ALL' }
       },
-      required: ['client']
+      required: ['account_id']
     }
   },
   {
     name: 'update_ad',
-    description: 'Ativa, pausa ou arquiva um anúncio',
+    description: 'Ativa, pausa ou arquiva um anúncio.',
     inputSchema: {
       type: 'object',
       properties: {
-        client: { type: 'string' },
+        account_id: { type: 'string', description: 'ID da conta' },
+        client: { type: 'string', description: 'Nome do cliente (opcional)' },
         ad_id: { type: 'string' },
         status: { type: 'string', enum: ['ACTIVE', 'PAUSED', 'ARCHIVED'] },
         name: { type: 'string' }
       },
-      required: ['client', 'ad_id']
+      required: ['account_id', 'ad_id']
     }
   },
 
-  // ─── INSIGHTS / MÉTRICAS ──────────────────────────────
+  // ─── INSIGHTS ─────────────────────────────────────────
   {
     name: 'get_insights',
-    description: 'Retorna métricas de performance (ROAS, CPC, CTR, CPM, spend, impressões, etc.)',
+    description: 'Retorna métricas de performance (ROAS, CPC, CTR, spend, etc.). Use account_id diretamente. NÃO chame list_clients antes.',
     inputSchema: {
       type: 'object',
       properties: {
-        client: { type: 'string' },
+        account_id: { type: 'string', description: 'ID da conta. Exemplo: act_949878915087001' },
+        client: { type: 'string', description: 'Nome do cliente (opcional)' },
         level: { type: 'string', enum: ['account', 'campaign', 'adset', 'ad'], default: 'campaign' },
-        object_id: { type: 'string', description: 'ID específico (campaign_id, adset_id, etc.) — omitir para conta toda' },
+        object_id: { type: 'string', description: 'ID específico para filtrar (opcional)' },
         date_preset: {
           type: 'string',
           enum: ['today', 'yesterday', 'last_3d', 'last_7d', 'last_14d', 'last_28d',
                  'last_30d', 'last_90d', 'this_month', 'last_month', 'this_quarter', 'last_year'],
           default: 'last_30d'
         },
-        time_range: {
-          type: 'object',
-          description: 'Período customizado: { since: "2024-01-01", until: "2024-01-31" }'
-        },
-        breakdowns: {
-          type: 'array',
-          items: { type: 'string' },
-          description: 'Quebras de dados: age, gender, device_platform, publisher_platform, etc.'
-        }
+        time_range: { type: 'object', description: '{ since: "2024-01-01", until: "2024-01-31" }' },
+        breakdowns: { type: 'array', items: { type: 'string' } }
       },
-      required: ['client']
+      required: ['account_id']
     }
   },
 
   // ─── PÚBLICOS ─────────────────────────────────────────
   {
     name: 'get_audiences',
-    description: 'Lista públicos personalizados e lookalikes da conta',
+    description: 'Lista públicos personalizados e lookalikes. Use account_id diretamente.',
     inputSchema: {
       type: 'object',
       properties: {
-        client: { type: 'string' },
+        account_id: { type: 'string', description: 'ID da conta. Exemplo: act_949878915087001' },
+        client: { type: 'string', description: 'Nome do cliente (opcional)' },
         type: { type: 'string', enum: ['custom', 'lookalike', 'all'], default: 'all' }
       },
-      required: ['client']
+      required: ['account_id']
     }
   },
 
   // ─── PIXELS ───────────────────────────────────────────
   {
     name: 'get_pixels',
-    description: 'Lista pixels do Meta instalados na conta e seus eventos',
+    description: 'Lista pixels do Meta instalados na conta. Use account_id diretamente.',
     inputSchema: {
       type: 'object',
       properties: {
-        client: { type: 'string' }
+        account_id: { type: 'string', description: 'ID da conta. Exemplo: act_949878915087001' },
+        client: { type: 'string', description: 'Nome do cliente (opcional)' }
       },
-      required: ['client']
+      required: ['account_id']
     }
   }
 ];
@@ -278,9 +277,7 @@ export async function handleMetaAds(toolName, args) {
         filters.push({ field: 'effective_status', operator: 'IN', value: [params.status] });
       }
       if (filters.length) p.filtering = JSON.stringify(filters);
-      const endpoint = params.campaign_id
-        ? `/${params.campaign_id}/adsets`
-        : `/${accountId}/adsets`;
+      const endpoint = params.campaign_id ? `/${params.campaign_id}/adsets` : `/${accountId}/adsets`;
       return client.get(endpoint, p);
     }
 
@@ -334,26 +331,18 @@ export async function handleMetaAds(toolName, args) {
       const insightFields = [
         'campaign_name', 'campaign_id', 'adset_name', 'adset_id', 'ad_name', 'ad_id',
         'impressions', 'reach', 'clicks', 'spend', 'ctr', 'cpc', 'cpm', 'cpp',
-        'actions', 'action_values', 'roas', 'frequency', 'unique_clicks',
+        'actions', 'action_values', 'frequency', 'unique_clicks',
         'cost_per_action_type', 'website_purchase_roas', 'conversions'
       ].join(',');
 
       const p = { fields: insightFields, level: params.level || 'campaign' };
-
       if (params.time_range) {
         p.time_range = JSON.stringify(params.time_range);
       } else {
         p.date_preset = params.date_preset || 'last_30d';
       }
-
-      if (params.breakdowns?.length) {
-        p.breakdowns = params.breakdowns.join(',');
-      }
-
-      const endpoint = params.object_id
-        ? `/${params.object_id}/insights`
-        : `/${accountId}/insights`;
-
+      if (params.breakdowns?.length) p.breakdowns = params.breakdowns.join(',');
+      const endpoint = params.object_id ? `/${params.object_id}/insights` : `/${accountId}/insights`;
       return client.get(endpoint, p);
     }
 
