@@ -1,0 +1,17 @@
+{
+  "name": "rc-meta-mcp",
+  "version": "1.0.0",
+  "description": "RC Performance — Meta Ads MCP Server",
+  "type": "module",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "express": "^4.18.2",
+    "dotenv": "^16.3.1",
+    "node-fetch": "^3.3.2"
+  }
+}
