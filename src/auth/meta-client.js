@@ -41,14 +41,20 @@ export function getClient() {
 }
 
 export function resolveAccountId(clientName, accountId = null) {
+  // Prioridade 1: account_id direto na chamada
   if (accountId) return accountId;
-  const name = clientName.toUpperCase().replace(/[\s-]/g, '_');
-  const envId = process.env[`META_ACCOUNT_${name}`];
-  if (!envId) throw new Error(
-    `account_id não encontrado para "${clientName}". ` +
-    `Passe "account_id" na chamada ou configure META_ACCOUNT_${name} no .env`
+
+  // Prioridade 2: client name → busca no .env
+  if (clientName) {
+    const name = clientName.toUpperCase().replace(/[\s-]/g, '_');
+    const envId = process.env[`META_ACCOUNT_${name}`];
+    if (envId) return envId;
+  }
+
+  throw new Error(
+    'Forneça "account_id" diretamente na chamada (ex: "account_id": "act_123456"). ' +
+    'Nenhum account_id configurado no servidor para este cliente.'
   );
-  return envId;
 }
 
 export function listClients() {
