@@ -1,7 +1,7 @@
 // src/tools/facebook-pages.js
 // Facebook Pages Insights via Graph API
 
-import { resolveClient } from '../auth/meta-client.js';
+import { getClient } from '../auth/meta-client.js';
 
 export const facebookTools = [
   {
