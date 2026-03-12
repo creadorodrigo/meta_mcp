@@ -1,7 +1,7 @@
 // src/tools/media-library.js
 // Biblioteca de Mídias do Meta (imagens e vídeos dos criativos)
 
-import { resolveClient } from '../auth/meta-client.js';
+import { getClient, resolveAccountId } from '../auth/meta-client.js';
 
 export const mediaTools = [
   {
