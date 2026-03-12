@@ -1,8 +1,10 @@
 // src/index.js
+// RC Performance — Meta MCP Server
+// Suporta: stdio (Claude Desktop local) + HTTP JSON-RPC (VPS remoto / SAAS / N8N)
+
 import 'dotenv/config';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
-import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
 import express from 'express';
 
@@ -31,7 +33,8 @@ async function routeTool(name, args) {
   throw new Error(`Tool não encontrada: ${name}`);
 }
 
-function createMcpServer() {
+// ─── MODO: STDIO ──────────────────────────────────────────
+async function startStdio() {
   const server = new Server(
     { name: 'rc-meta-mcp', version: '1.0.0' },
     { capabilities: { tools: {} } }
@@ -46,12 +49,6 @@ function createMcpServer() {
       return { content: [{ type: 'text', text: `Erro: ${error.message}` }], isError: true };
     }
   });
-  return server;
-}
-
-// ─── MODO: STDIO ──────────────────────────────────────────
-async function startStdio() {
-  const server = createMcpServer();
   const transport = new StdioServerTransport();
   await server.connect(transport);
   console.error('RC Meta MCP rodando em STDIO');
@@ -60,12 +57,12 @@ async function startStdio() {
 // ─── MODO: HTTP ───────────────────────────────────────────
 async function startHttp() {
   const app = express();
-  app.use(express.json());
+  app.use(express.json({ limit: '10mb' }));
 
   const PORT = process.env.PORT || 3000;
   const API_KEY = process.env.MCP_API_KEY;
 
-  // CORS
+  // ── CORS global ──
   app.use((req, res, next) => {
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
@@ -84,12 +81,12 @@ async function startHttp() {
     next();
   };
 
-  // Health
+  // ── Health ──
   app.get('/health', (req, res) => {
     res.json({ status: 'ok', server: 'rc-meta-mcp', version: '1.0.0' });
   });
 
-  // Tools REST (SAAS / N8N)
+  // ── Tools REST (SAAS / N8N) ──
   app.get('/tools', auth, (req, res) => {
     res.json({ tools: ALL_TOOLS, total: ALL_TOOLS.length });
   });
@@ -104,67 +101,93 @@ async function startHttp() {
     }
   });
 
-  // ── MCP Streamable HTTP (Claude.ai) ──
-  const sessions = new Map();
+  // ── MCP GET — SSE para Claude.ai descobrir o endpoint ──
+  app.get('/mcp', auth, (req, res) => {
+    const accept = req.headers['accept'] || '';
 
-  app.all('/mcp', auth, async (req, res) => {
-    try {
-      const sessionId = req.headers['mcp-session-id'];
+    // Claude.ai abre SSE para descoberta
+    if (accept.includes('text/event-stream')) {
+      res.setHeader('Content-Type', 'text/event-stream');
+      res.setHeader('Cache-Control', 'no-cache');
+      res.setHeader('Connection', 'keep-alive');
 
-      if (req.method === 'POST') {
-        const body = req.body;
+      const baseUrl = `${req.protocol}://${req.get('host')}`;
+      res.write(`event: endpoint\ndata: ${baseUrl}/mcp\n\n`);
 
-        // Nova sessão: initialize
-        if (!sessionId && body?.method === 'initialize') {
-          const transport = new StreamableHTTPServerTransport({
-            sessionIdGenerator: () => crypto.randomUUID(),
-          });
-          const server = createMcpServer();
-          await server.connect(transport);
-
-          transport.on('close', () => {
-            if (transport.sessionId) sessions.delete(transport.sessionId);
-          });
-
-          await transport.handleRequest(req, res, body);
-
-          if (transport.sessionId) {
-            sessions.set(transport.sessionId, transport);
-          }
-          return;
-        }
-
-        // Sessão existente
-        if (sessionId && sessions.has(sessionId)) {
-          const transport = sessions.get(sessionId);
-          await transport.handleRequest(req, res, body);
-          return;
-        }
-
-        return res.status(400).json({ error: 'Sessão inválida ou expirada.' });
-      }
-
-      if (req.method === 'GET') {
-        if (sessionId && sessions.has(sessionId)) {
-          const transport = sessions.get(sessionId);
-          await transport.handleRequest(req, res);
-          return;
-        }
-        return res.status(400).json({ error: 'Session ID inválido.' });
-      }
-
-      if (req.method === 'DELETE') {
-        if (sessionId && sessions.has(sessionId)) {
-          sessions.delete(sessionId);
-          return res.status(204).end();
-        }
-        return res.status(404).json({ error: 'Sessão não encontrada.' });
-      }
-
-    } catch (error) {
-      console.error('MCP Error:', error);
-      res.status(500).json({ error: error.message });
+      const keepalive = setInterval(() => res.write(': keepalive\n\n'), 25000);
+      req.on('close', () => { clearInterval(keepalive); res.end(); });
+      return;
     }
+
+    // Fallback JSON para browsers / debug
+    res.json({
+      name: 'rc-meta-mcp',
+      version: '1.0.0',
+      description: 'RC Performance — Meta Ads MCP Server',
+      tools: ALL_TOOLS.length,
+      protocol: 'mcp/1.0'
+    });
+  });
+
+  // ── MCP POST — JSON-RPC 2.0 ──
+  app.post('/mcp', auth, async (req, res) => {
+    // Suporte a batch (array) e single request
+    const isBatch = Array.isArray(req.body);
+    const requests = isBatch ? req.body : [req.body];
+    const responses = [];
+
+    for (const request of requests) {
+      const { method, params, id } = request;
+
+      if (method === 'initialize') {
+        responses.push({
+          jsonrpc: '2.0', id,
+          result: {
+            protocolVersion: '2024-11-05',
+            capabilities: { tools: {} },
+            serverInfo: { name: 'rc-meta-mcp', version: '1.0.0' }
+          }
+        });
+        continue;
+      }
+
+      if (method === 'notifications/initialized' || method === 'ping') {
+        // Notificações não retornam resposta
+        continue;
+      }
+
+      try {
+        let result;
+
+        if (method === 'tools/list') {
+          result = { tools: ALL_TOOLS };
+
+        } else if (method === 'tools/call') {
+          const data = await routeTool(params.name, params.arguments || {});
+          result = { content: [{ type: 'text', text: JSON.stringify(data, null, 2) }] };
+
+        } else {
+          responses.push({
+            jsonrpc: '2.0', id,
+            error: { code: -32601, message: `Método não encontrado: ${method}` }
+          });
+          continue;
+        }
+
+        responses.push({ jsonrpc: '2.0', id, result });
+
+      } catch (error) {
+        responses.push({
+          jsonrpc: '2.0', id,
+          error: { code: -32000, message: error.message }
+        });
+      }
+    }
+
+    // Se não houver respostas (só notificações), retorna 204
+    if (responses.length === 0) return res.status(204).end();
+
+    res.json(isBatch ? responses : responses[0]);
   });
 
   app.listen(PORT, () => {
