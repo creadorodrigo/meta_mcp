@@ -1,10 +1,8 @@
 // src/index.js
-// RC Performance — Meta MCP Server
-// Suporta: stdio (Claude Desktop local) + HTTP Streamable (VPS remoto / SAAS / N8N)
-
 import 'dotenv/config';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
+import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprotocol/sdk/types.js';
 import express from 'express';
 
@@ -33,8 +31,7 @@ async function routeTool(name, args) {
   throw new Error(`Tool não encontrada: ${name}`);
 }
 
-// ─── MODO: STDIO ──────────────────────────────────────────
-async function startStdio() {
+function createMcpServer() {
   const server = new Server(
     { name: 'rc-meta-mcp', version: '1.0.0' },
     { capabilities: { tools: {} } }
@@ -49,6 +46,12 @@ async function startStdio() {
       return { content: [{ type: 'text', text: `Erro: ${error.message}` }], isError: true };
     }
   });
+  return server;
+}
+
+// ─── MODO: STDIO ──────────────────────────────────────────
+async function startStdio() {
+  const server = createMcpServer();
   const transport = new StdioServerTransport();
   await server.connect(transport);
   console.error('RC Meta MCP rodando em STDIO');
@@ -62,10 +65,10 @@ async function startHttp() {
   const PORT = process.env.PORT || 3000;
   const API_KEY = process.env.MCP_API_KEY;
 
-  // ── CORS global ──
+  // CORS
   app.use((req, res, next) => {
     res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, DELETE, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization, x-api-key, mcp-session-id');
     if (req.method === 'OPTIONS') return res.status(204).end();
     next();
@@ -77,23 +80,20 @@ async function startHttp() {
       req.headers['x-api-key'] ||
       req.headers['authorization']?.replace('Bearer ', '') ||
       req.query.key;
-    if (key !== API_KEY) {
-      return res.status(401).json({ error: 'Não autorizado. Forneça x-api-key ou Authorization: Bearer <key>' });
-    }
+    if (key !== API_KEY) return res.status(401).json({ error: 'Não autorizado.' });
     next();
   };
 
-  // ── Health ──
+  // Health
   app.get('/health', (req, res) => {
     res.json({ status: 'ok', server: 'rc-meta-mcp', version: '1.0.0' });
   });
 
-  // ── Listar tools (REST) ──
+  // Tools REST (SAAS / N8N)
   app.get('/tools', auth, (req, res) => {
     res.json({ tools: ALL_TOOLS, total: ALL_TOOLS.length });
   });
 
-  // ── Executar tool (SAAS / N8N) ──
   app.post('/tools/:toolName', auth, async (req, res) => {
     const { toolName } = req.params;
     try {
@@ -104,70 +104,75 @@ async function startHttp() {
     }
   });
 
-  // ── MCP via SSE — GET /mcp (Claude.ai abre este canal) ──
-  app.get('/mcp', auth, (req, res) => {
-    res.setHeader('Content-Type', 'text/event-stream');
-    res.setHeader('Cache-Control', 'no-cache');
-    res.setHeader('Connection', 'keep-alive');
+  // ── MCP Streamable HTTP (Claude.ai) ──
+  const sessions = new Map();
 
-    // Envia o endpoint onde o Claude.ai deve fazer POST
-    const baseUrl = `${req.protocol}://${req.get('host')}`;
-    res.write(`event: endpoint\ndata: ${baseUrl}/mcp\n\n`);
-
-    // Keepalive a cada 25s para não fechar a conexão
-    const keepalive = setInterval(() => {
-      res.write(': keepalive\n\n');
-    }, 25000);
-
-    req.on('close', () => {
-      clearInterval(keepalive);
-      res.end();
-    });
-  });
-
-  // ── MCP via JSON-RPC 2.0 — POST /mcp (Claude.ai executa tools aqui) ──
-  app.post('/mcp', auth, async (req, res) => {
-    const { method, params, id } = req.body;
-
-    if (method === 'initialize') {
-      return res.json({
-        jsonrpc: '2.0', id,
-        result: {
-          protocolVersion: '2024-11-05',
-          capabilities: { tools: {} },
-          serverInfo: { name: 'rc-meta-mcp', version: '1.0.0' }
-        }
-      });
-    }
-
-    if (method === 'notifications/initialized') {
-      return res.status(204).end();
-    }
-
+  app.all('/mcp', auth, async (req, res) => {
     try {
-      let result;
+      const sessionId = req.headers['mcp-session-id'];
 
-      if (method === 'tools/list') {
-        result = { tools: ALL_TOOLS };
+      if (req.method === 'POST') {
+        const body = req.body;
 
-      } else if (method === 'tools/call') {
-        const data = await routeTool(params.name, params.arguments || {});
-        const text = JSON.stringify(data, null, 2);
-        result = { content: [{ type: 'text', text }] };
+        // Nova sessão: initialize
+        if (!sessionId && body?.method === 'initialize') {
+          const transport = new StreamableHTTPServerTransport({
+            sessionIdGenerator: () => crypto.randomUUID(),
+          });
+          const server = createMcpServer();
+          await server.connect(transport);
 
-      } else {
-        return res.json({
-          jsonrpc: '2.0', id,
-          error: { code: -32601, message: `Método não encontrado: ${method}` }
-        });
+          transport.on('close', () => {
+            if (transport.sessionId) sessions.delete(transport.sessionId);
+          });
+
+          await transport.handleRequest(req, res, body);
+
+          if (transport.sessionId) {
+            sessions.set(transport.sessionId, transport);
+          }
+          return;
+        }
+
+        // Sessão existente
+        if (sessionId && sessions.has(sessionId)) {
+          const transport = sessions.get(sessionId);
+          await transport.handleRequest(req, res, body);
+          return;
+        }
+
+        return res.status(400).json({ error: 'Sessão inválida ou expirada.' });
       }
 
-      res.json({ jsonrpc: '2.0', id, result });
+      if (req.method === 'GET') {
+        if (sessionId && sessions.has(sessionId)) {
+          const transport = sessions.get(sessionId);
+          await transport.handleRequest(req, res);
+          return;
+        }
+        return res.status(400).json({ error: 'Session ID inválido.' });
+      }
+
+      if (req.method === 'DELETE') {
+        if (sessionId && sessions.has(sessionId)) {
+          sessions.delete(sessionId);
+          return res.status(204).end();
+        }
+        return res.status(404).json({ error: 'Sessão não encontrada.' });
+      }
 
     } catch (error) {
-      res.json({
-        jsonrpc: '2.0', id,
-        error: { code: -32000, message: error.message }
-      });
+      console.error('MCP Error:', error);
+      res.status(500).json({ error: error.message });
     }
   });
+
+  app.listen(PORT, () => {
+    console.log(`RC Meta MCP HTTP na porta ${PORT}`);
+  });
+}
+
+// ─── INICIALIZAÇÃO ────────────────────────────────────────
+const mode = process.env.MCP_MODE || 'stdio';
+if (mode === 'http') startHttp();
+else startStdio();
