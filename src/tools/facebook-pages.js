@@ -90,7 +90,7 @@ export const facebookTools = [
 
 export async function handleFacebook(toolName, args) {
   const { client: clientName, ...params } = args;
-  const { client } = resolveClient(clientName);
+  const client = getClient();
 
   switch (toolName) {
 

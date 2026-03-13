@@ -1,7 +1,7 @@
 // src/tools/instagram.js
 // Instagram Insights via Graph API
 
-import { getClient, resolveAccountId } from '../auth/meta-client.js';
+import { getClient } from '../auth/meta-client.js';
 
 export const instagramTools = [
   {
@@ -88,7 +88,7 @@ export const instagramTools = [
 
 export async function handleInstagram(toolName, args) {
   const { client: clientName, ...params } = args;
-  const { client, accountId } = resolveClient(clientName);
+  const client = getClient();
 
   switch (toolName) {
 
