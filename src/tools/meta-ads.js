@@ -335,13 +335,36 @@ export async function handleMetaAds(toolName, args) {
         'cost_per_action_type', 'website_purchase_roas', 'conversions'
       ].join(',');
 
-      const p = { fields: insightFields, level: params.level || 'campaign' };
+      const p = { 
+        fields: insightFields, 
+        level: params.level || 'campaign',
+        limit: 500 // Aumentamos o limite de busca interna
+      };
+
+      // --- FILTRO NATIVO DE SPEND > 0 ---
+      const filters = [
+        { field: 'spend', operator: 'GREATER_THAN', value: 0 }
+      ];
+
+      // --- FILTRO NATIVO DE NOME (se enviado) ---
+      if (params.filtering_name) {
+        filters.push({ 
+          field: 'campaign.name', 
+          operator: 'CONTAIN', 
+          value: params.filtering_name 
+        });
+      }
+
+      p.filtering = JSON.stringify(filters);
+
       if (params.time_range) {
         p.time_range = JSON.stringify(params.time_range);
       } else {
         p.date_preset = params.date_preset || 'last_30d';
       }
+
       if (params.breakdowns?.length) p.breakdowns = params.breakdowns.join(',');
+      
       const endpoint = params.object_id ? `/${params.object_id}/insights` : `/${accountId}/insights`;
       return client.get(endpoint, p);
     }
