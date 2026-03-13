@@ -73,7 +73,8 @@ export const mediaTools = [
 
 export async function handleMedia(toolName, args) {
   const { client: clientName, ...params } = args;
-  const { client, accountId } = resolveClient(clientName);
+  const client = getClient();
+  const accountId = resolveAccountId(clientName);
 
   switch (toolName) {
 
