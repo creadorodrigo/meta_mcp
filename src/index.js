@@ -12,6 +12,8 @@ import { metaAdsTools, handleMetaAds } from './tools/meta-ads.js';
 import { mediaTools, handleMedia } from './tools/media-library.js';
 import { instagramTools, handleInstagram } from './tools/instagram.js';
 import { facebookTools, handleFacebook } from './tools/facebook-pages.js';
+import { claudeProxy } from './claude/proxy.js';
+import { runClaude } from './claude/runner.js';
 
 const ALL_TOOLS = [
   ...metaAdsTools,
@@ -188,6 +190,28 @@ async function startHttp() {
     if (responses.length === 0) return res.status(204).end();
 
     res.json(isBatch ? responses : responses[0]);
+  });
+
+  // ── Claude Proxy (chamadas diretas à API — ex: Reunioes) ──
+  app.post('/claude/proxy', auth, async (req, res) => {
+    try {
+      const { model, max_tokens, system, messages } = req.body;
+      const data = await claudeProxy({ model, max_tokens, system, messages });
+      res.json(data);
+    } catch (error) {
+      res.status(500).json({ success: false, error: error.message });
+    }
+  });
+
+  // ── Claude Run (Agent SDK headless — ex: RelatoriosIA) ──
+  app.post('/claude/run', auth, async (req, res) => {
+    try {
+      const { prompt, allowedTools, maxTurns } = req.body;
+      const data = await runClaude({ prompt, allowedTools, maxTurns });
+      res.json({ success: true, ...data });
+    } catch (error) {
+      res.status(500).json({ success: false, error: error.message });
+    }
   });
 
   app.listen(PORT, () => {
