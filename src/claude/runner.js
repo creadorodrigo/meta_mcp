@@ -1,30 +1,30 @@
 // src/claude/runner.js
-// Runner do Claude Agent SDK — executa sessões de Claude Code headless
+// Chama a API do Anthropic diretamente — sem depender do CLI do Claude
 
-import { query } from '@anthropic-ai/claude-agent-sdk';
-
-export async function runClaude({ prompt, allowedTools = [], maxTurns = 10, permissionMode = 'bypassPermissions' }) {
+export async function runClaude({ prompt, maxTurns = 10 }) {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) throw new Error('ANTHROPIC_API_KEY não configurada no servidor');
 
-  let result = '';
-  let sessionId = null;
-
-  for await (const msg of query({
-    prompt,
-    options: {
-      allowedTools,
-      maxTurns,
-      permissionMode,
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-api-key': apiKey,
+      'anthropic-version': '2023-06-01',
     },
-  })) {
-    if (msg.type === 'system' && msg.session_id) {
-      sessionId = msg.session_id;
-    }
-    if (msg.type === 'result') {
-      result = msg.result ?? '';
-    }
+    body: JSON.stringify({
+      model: 'claude-sonnet-4-5-20251001',
+      max_tokens: 4096,
+      messages: [{ role: 'user', content: prompt }],
+    }),
+  });
+
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`Anthropic API error ${res.status}: ${err}`);
   }
 
-  return { result, sessionId };
+  const data = await res.json();
+  const result = data.content?.[0]?.text ?? '';
+  return { result };
 }
