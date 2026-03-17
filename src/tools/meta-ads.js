@@ -335,10 +335,10 @@ export async function handleMetaAds(toolName, args) {
         'cost_per_action_type', 'website_purchase_roas', 'conversions'
       ].join(',');
 
-      const p = { 
-        fields: insightFields, 
+      const p = {
+        fields: insightFields,
         level: params.level || 'campaign',
-        limit: 500 // Aumentamos o limite de busca interna
+        limit: 500
       };
 
       // --- FILTRO NATIVO DE SPEND > 0 ---
@@ -348,10 +348,10 @@ export async function handleMetaAds(toolName, args) {
 
       // --- FILTRO NATIVO DE NOME (se enviado) ---
       if (params.filtering_name) {
-        filters.push({ 
-          field: 'campaign.name', 
-          operator: 'CONTAIN', 
-          value: params.filtering_name 
+        filters.push({
+          field: 'campaign.name',
+          operator: 'CONTAIN',
+          value: params.filtering_name
         });
       }
 
@@ -364,9 +364,22 @@ export async function handleMetaAds(toolName, args) {
       }
 
       if (params.breakdowns?.length) p.breakdowns = params.breakdowns.join(',');
-      
+
       const endpoint = params.object_id ? `/${params.object_id}/insights` : `/${accountId}/insights`;
-      return client.get(endpoint, p);
+
+      // Seguir paginação com cursor até ter todos os resultados
+      const allData = [];
+      let after = null;
+      do {
+        const pageParams = after ? { ...p, after } : p;
+        const response = await client.get(endpoint, pageParams);
+        allData.push(...(response.data || []));
+        after = response.paging?.cursors?.after && response.paging?.next
+          ? response.paging.cursors.after
+          : null;
+      } while (after);
+
+      return { data: allData, total: allData.length };
     }
 
     case 'get_audiences':
