@@ -178,7 +178,9 @@ export const metaAdsTools = [
         date_preset: {
           type: 'string',
           enum: ['today', 'yesterday', 'last_3d', 'last_7d', 'last_14d', 'last_28d',
-                 'last_30d', 'last_90d', 'this_month', 'last_month', 'this_quarter', 'last_year'],
+                 'last_30d', 'last_90d', 'this_week_mon_today', 'this_week_sun_today',
+                 'last_week_mon_sun', 'last_week_sun_sat', 'this_month', 'last_month',
+                 'this_quarter', 'last_year', 'this_year'],
           default: 'last_30d'
         },
         time_range: { type: 'object', description: '{ since: "2024-01-01", until: "2024-01-31" }' },
